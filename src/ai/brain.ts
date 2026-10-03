@@ -129,7 +129,14 @@ Write a natural DM reply.`;
             // Strip wrapping quotes from LLM output if present
             return text.replace(/^["']|["']$/g, '');
         } catch (err: any) {
-            Logger.error(`AI request failed: ${err.message}`);
+            // Provide clean logs for common API / connection errors
+            if (err.message?.includes('ECONNREFUSED')) {
+                Logger.warn(`AI Provider unreachable (${this.endpoint}). Ensure the local gateway or service is running.`);
+            } else if (err.response?.status === 401) {
+                Logger.warn(`AI Provider auth failed. Check your API key or upstream provider configuration.`);
+            } else {
+                Logger.warn(`AI request failed: ${err.message}`);
+            }
             return this.getFallbackComment();
         }
     }

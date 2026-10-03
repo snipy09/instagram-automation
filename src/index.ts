@@ -225,28 +225,46 @@ class AutoPilotDaemon {
         // ── Like ──────────────────────────────────────────────────────────────
         if (config.modules.hashtagLike && stats.likesToday < limits.dailyLikes) {
             try {
-                // Instagram uses accessible SVG via aria-label on the button, not the SVG itself
-                const likeBtn = page.locator(
-                    'button[aria-label="Like"], ' +
-                    '[role="dialog"] button:has(svg[aria-label="Like"]), ' +
-                    'article button:has(svg[aria-label="Like"])'
-                ).first();
-                if ((await likeBtn.count()) > 0 && (await likeBtn.isVisible())) {
-                    await likeBtn.click();
-                    Storage.addLike();
-                    Logger.success(`Liked post by @${username}`);
-                    await Humanizer.randomPause(1, 2);
+                // First check if already liked
+                const unlikeSvg = page.locator('svg[aria-label="Unlike"], svg[aria-label="Liked"]').first();
+                if ((await unlikeSvg.count()) > 0 && (await unlikeSvg.isVisible())) {
+                    Logger.info(`Post by @${username} is already liked — skipping like.`);
                 } else {
-                    Logger.warn(`Like button not found for @${username}`);
+                    // Look for the Like SVG, wrapped in button/div/span, or the SVG itself
+                    const likeTarget = page.locator(
+                        '[role="dialog"] div[role="button"]:has(svg[aria-label="Like"]), ' +
+                        '[role="dialog"] span[role="button"]:has(svg[aria-label="Like"]), ' +
+                        '[role="dialog"] button:has(svg[aria-label="Like"]), ' +
+                        '[role="dialog"] svg[aria-label="Like"], ' +
+                        'article svg[aria-label="Like"], ' +
+                        'section svg[aria-label="Like"], ' +
+                        'div[role="button"]:has(svg[aria-label="Like"]), ' +
+                        'svg[aria-label="Like"]'
+                    ).first();
+
+                    if ((await likeTarget.count()) > 0 && (await likeTarget.isVisible())) {
+                        // Use force because SVGs/Clickable divs can sometimes fail strict actionability checks or overlap
+                        await likeTarget.click({ force: true });
+                        Storage.addLike();
+                        Logger.success(`Liked post by @${username}`);
+                        await Humanizer.randomPause(1, 2);
+                    } else {
+                        Logger.warn(`Like button not found for @${username}`);
+                    }
                 }
-            } catch (_) {}
+            } catch (_) {
+                Logger.warn(`Failed to interact with Like button for @${username}`);
+            }
         }
 
         // ── Comment ───────────────────────────────────────────────────────────
         if (config.modules.hashtagComment && stats.commentsToday < limits.dailyComments) {
             try {
                 const commentBox = page.locator(
-                    'textarea[placeholder*="comment" i], textarea[aria-label*="comment" i]'
+                    '[role="dialog"] textarea[placeholder*="comment" i], ' +
+                    '[role="dialog"] textarea[aria-label*="comment" i], ' +
+                    'textarea[placeholder*="comment" i], ' +
+                    'textarea[aria-label*="comment" i]'
                 ).first();
 
                 if ((await commentBox.count()) === 0 || !(await commentBox.isVisible())) {
@@ -260,19 +278,22 @@ class AutoPilotDaemon {
 
                     // The Post/Submit button activates only after text is entered
                     const postBtn = page.locator(
+                        '[role="dialog"] button[type="submit"]:not([disabled]), ' +
+                        '[role="dialog"] div[role="button"]:has-text("Post"), ' +
+                        '[role="dialog"] button:has-text("Post"), ' +
                         'button[type="submit"]:not([disabled]), ' +
                         'div[role="button"]:has-text("Post"), ' +
                         'button:has-text("Post")'
                     ).last();
 
                     if ((await postBtn.count()) > 0 && (await postBtn.isVisible())) {
-                        await postBtn.click();
+                        await postBtn.click({ force: true });
                         Storage.addComment(chosen.href);
                         Logger.success(`Commented on @${username}'s post!`);
                     } else {
                         // Clear the box - don't leave half-typed text
                         await page.keyboard.press('Control+a');
-                        await page.keyboard.press('Delete');
+                        await page.keyboard.press('Backspace');
                         Logger.warn('Post button not found after typing; comment cleared.');
                     }
                 }
