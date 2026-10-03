@@ -65,12 +65,13 @@ class AutoPilotDaemon {
                 // 1. Check sidebar Profile link (has 'Profile' text or user avatar img)
                 const navLinks = Array.from(document.querySelectorAll('a[href]'));
                 for (const a of navLinks) {
-                    const href = (a.getAttribute('href') || '').trim();
+                    const el = a as HTMLAnchorElement;
+                    const href = (el.getAttribute('href') || '').trim();
                     const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
                     if (m && !excluded.has(m[1].toLowerCase())) {
-                        const hasProfileText = (a.textContent || '').toLowerCase().includes('profile');
-                        const hasAvatar = !!a.querySelector('img');
-                        const inNav = !!a.closest('nav, div[role="navigation"], header');
+                        const hasProfileText = (el.textContent || '').toLowerCase().includes('profile');
+                        const hasAvatar = !!el.querySelector('img');
+                        const inNav = !!el.closest('nav, div[role="navigation"], header');
                         if (hasProfileText || (inNav && hasAvatar)) {
                             return m[1];
                         }
@@ -90,10 +91,11 @@ class AutoPilotDaemon {
 
                 // 3. Fallback: any non-standard link in navigation
                 for (const a of navLinks) {
-                    const href = (a.getAttribute('href') || '').trim();
+                    const el = a as HTMLAnchorElement;
+                    const href = (el.getAttribute('href') || '').trim();
                     const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
                     if (m && !excluded.has(m[1].toLowerCase())) {
-                        if (a.closest('nav, div[role="navigation"]')) {
+                        if (el.closest('nav, div[role="navigation"]')) {
                             return m[1];
                         }
                     }

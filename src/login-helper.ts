@@ -49,7 +49,8 @@ async function runLogin() {
                         // Look for sidebar links
                         const links = Array.from(document.querySelectorAll('a[role="link"], nav a'));
                         for (const a of links) {
-                            const href = a.getAttribute('href') || '';
+                            const el = a as HTMLAnchorElement;
+                            const href = el.getAttribute('href') || '';
                             if (href.startsWith('/') && !href.includes('/explore') && !href.includes('/reels') && !href.includes('/direct') && !href.includes('/stories') && !href.includes('/accounts') && href.length > 2) {
                                 const clean = href.replace(/\//g, '');
                                 if (clean && !clean.includes('?')) return clean;
