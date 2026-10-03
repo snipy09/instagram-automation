@@ -39,6 +39,7 @@ export const config = {
     paths: {
         userDataDir: path.resolve(__dirname, '../data/browser_profile'),
         dataDir: path.resolve(__dirname, '../data'),
+        authFile: path.resolve(__dirname, '../data/auth.json'),
         statsFile: path.resolve(__dirname, '../data/stats.json'),
         logsFile: path.resolve(__dirname, '../data/app.log')
     }

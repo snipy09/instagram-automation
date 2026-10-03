@@ -2,10 +2,9 @@ import { chromium } from 'playwright-extra';
 import type { BrowserContext, Page } from 'playwright';
 // @ts-ignore
 import stealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { config, getActiveLimits } from '../config';
+import { config } from '../config';
 import { Logger } from '../utils/logger';
 import fs from 'fs';
-import path from 'path';
 
 // Apply the stealth plugin to avoid detection
 chromium.use(stealthPlugin());
@@ -41,10 +40,20 @@ export class BrowserEngine {
             // Set stealth Init scripts
             await this.context.addInitScript(() => {
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                // We use standard Chrome signature spoofing here 
                 (globalThis as any).window = (globalThis as any).window || {};
                 (globalThis as any).window.chrome = { runtime: {}, app: {}, loadTimes: () => ({}) };
             });
+
+            // If auth.json exists and context has no sessionid, import cookies
+            if (fs.existsSync(config.paths.authFile)) {
+                try {
+                    const raw = fs.readFileSync(config.paths.authFile, 'utf8');
+                    const state = JSON.parse(raw);
+                    if (Array.isArray(state.cookies) && state.cookies.length > 0) {
+                        await this.context.addCookies(state.cookies);
+                    }
+                } catch (_) {}
+            }
 
             const pages = this.context.pages();
             this.page = pages.length > 0 ? pages[0] : await this.context.newPage();
@@ -59,7 +68,14 @@ export class BrowserEngine {
     async stop() {
         if (this.context) {
             Logger.info('Closing Browser context securely...');
+            try {
+                // Save state to auth.json before closing
+                if (this.context) {
+                    await this.context.storageState({ path: config.paths.authFile });
+                }
+            } catch (_) {}
             await this.context.close();
+            this.context = null;
         }
     }
 }

@@ -34,40 +34,73 @@ class AutoPilotDaemon {
 
         const page = await this.engine.launch(true); // headless background
 
-        // ── Real login check ──────────────────────────────────────────────────
-        // We check the saved profile is actually authenticated. If the username
-        // login field appears, it means the session cookies have expired or were
-        // never saved — force stop and ask the user to re-run 2-Login.bat.
-        await page.goto('https://www.instagram.com/', { waitUntil: 'networkidle' });
+        // ── Real session verification ──────────────────────────────────────────
+        await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded' });
         await Humanizer.randomPause(2, 4);
 
-        const loginInput = await page.$('input[name="username"]');
-        if (loginInput) {
-            Logger.error('Session expired or not logged in. Close this window, run 2-Login.bat, log in manually, then restart the bot.');
-            process.exit(1);
-        }
+        const cookies = await page.context().cookies('https://www.instagram.com');
+        const hasSession = cookies.some(c => c.name === 'sessionid' && c.value.length > 5);
 
-        // Confirm we're on the real feed, not a soft redirect
-        const feedConfirm = await page.$('svg[aria-label="Home"], nav, main[role="main"]');
-        if (!feedConfirm) {
-            Logger.warn('Could not confirm Feed is visible — proceeding cautiously.');
+        if (!hasSession) {
+            Logger.error('Account is NOT logged in. No valid Instagram session found.');
+            Logger.warn('Please run 2-Login.bat once, enter your username and password, and wait until it confirms login.');
+            process.exit(1);
         }
 
         // ── Show logged-in account username ───────────────────────────────
         let accountName = 'unknown';
         try {
-            const resp = await page.evaluate(async () => {
+            // First check cookie ds_user_id
+            const dsCookie = cookies.find(c => c.name === 'ds_user_id');
+            const uid = dsCookie ? dsCookie.value : '';
+
+            accountName = await page.evaluate((userId) => {
+                const excluded = new Set([
+                    '', 'explore', 'reels', 'direct', 'stories', 'accounts',
+                    'your_activity', 'saved', 'settings', 'legal', 'about',
+                    'help', 'press', 'api', 'jobs', 'privacy', 'terms',
+                    'locations', 'language', 'p', 'reel', 'tv'
+                ]);
+
+                // 1. Check sidebar Profile link (has 'Profile' text or user avatar img)
+                const navLinks = Array.from(document.querySelectorAll('a[href]'));
+                for (const a of navLinks) {
+                    const href = (a.getAttribute('href') || '').trim();
+                    const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+                    if (m && !excluded.has(m[1].toLowerCase())) {
+                        const hasProfileText = (a.textContent || '').toLowerCase().includes('profile');
+                        const hasAvatar = !!a.querySelector('img');
+                        const inNav = !!a.closest('nav, div[role="navigation"], header');
+                        if (hasProfileText || (inNav && hasAvatar)) {
+                            return m[1];
+                        }
+                    }
+                }
+
+                // 2. Scan localStorage for cached user objects
                 try {
-                    // @ts-ignore
-                    const r = await fetch('/api/v1/accounts/edit/web_form_data/', { credentials: 'include' });
-                    if (r.ok) {
-                        const j: any = await r.json();
-                        return j?.form_data?.username || '';
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const val = localStorage.getItem(localStorage.key(i) || '') || '';
+                        if (val.includes('"username"')) {
+                            const m = val.match(/"username"\s*:\s*"([a-zA-Z0-9._]+)"/);
+                            if (m && !excluded.has(m[1].toLowerCase())) return m[1];
+                        }
                     }
                 } catch (_) {}
+
+                // 3. Fallback: any non-standard link in navigation
+                for (const a of navLinks) {
+                    const href = (a.getAttribute('href') || '').trim();
+                    const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+                    if (m && !excluded.has(m[1].toLowerCase())) {
+                        if (a.closest('nav, div[role="navigation"]')) {
+                            return m[1];
+                        }
+                    }
+                }
+
                 return '';
-            });
-            accountName = resp || 'unknown';
+            }, uid) || (uid ? `id_${uid}` : 'unknown');
         } catch (_) {}
 
         Logger.success(`Logged in as @${accountName} — starting automation loop...`);
