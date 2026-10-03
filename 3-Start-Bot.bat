@@ -1,11 +1,17 @@
 @echo off
+setlocal
+cd /d "%~dp0"
 echo ===========================================
 echo INSTAGRAM AI AUTOPILOT - STARTING BOT
 echo ===========================================
-echo The AI agent is now running in the background.
-echo You'll see the log output below.
-echo Press CTRL+C to stop the bot.
+echo The bot will run in this window. Press CTRL+C to stop it.
 echo ===========================================
-npm run build
-node dist/index.js
+call npm run build
+if errorlevel 1 goto :error
+node dist\index.js
 pause
+exit /b
+:error
+echo Build failed. See the error above.
+pause
+exit /b 1

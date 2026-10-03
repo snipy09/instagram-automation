@@ -82,10 +82,15 @@ class AutoPilotDaemon {
         Logger.action('Explore', `Surfing hashtag #${tag}`);
 
         await page.goto(`https://www.instagram.com/explore/tags/${tag}/`, { waitUntil: 'domcontentloaded' });
-        await Humanizer.randomPause(3, 7);
 
-        // Try to click the first top post 
-        const posts = await page.$$('article a[href^="/p/"], article a[href^="/reel/"]');
+        // Instagram's current grid does not consistently use an <article> wrapper.
+        // Wait for a post link, then use broad post/reel URL selectors rather than
+        // treating a slow client-side render as an empty hashtag page.
+        const postSelector = 'a[href^="/p/"], a[href^="/reel/"]';
+        await page.waitForSelector(postSelector, { state: 'attached', timeout: 15_000 }).catch(() => null);
+        await Humanizer.randomPause(2, 4);
+
+        const posts = await page.$$(postSelector);
         if (posts.length > 0) {
             // Click to open modal
             await posts[Math.floor(Math.random() * Math.min(3, posts.length))].click();
@@ -139,21 +144,30 @@ class AutoPilotDaemon {
 
             if (config.modules.hashtagComment && stats.commentsToday < limits.dailyComments) {
                 try {
-                    const commentBox = await page.locator('textarea[aria-label="Add a comment…"], textarea').first();
-                    if (commentBox) {
+                    // Instagram commonly renders the composer inside the post dialog.
+                    // Check that a visible, enabled composer and its matching Post action
+                    // actually exist before typing.
+                    const commentBox = page.locator('[role="dialog"] textarea[aria-label*="comment" i], textarea[aria-label*="comment" i]').first();
+                    const postButton = page.locator('[role="dialog"] button:has-text("Post"), [role="dialog"] div[role="button"]:has-text("Post"), button:has-text("Post")').first();
+
+                    if (await commentBox.count() === 0 || !await commentBox.isVisible() || !await commentBox.isEnabled()) {
+                        Logger.warn('Comment composer is unavailable; skipped comment without retrying.');
+                    } else {
                         Logger.info(`AI drafted comment: "${generatedComment}"`);
-                        await Humanizer.humanType(page, 'textarea', generatedComment);
-                        
-                        // Fake Send button click 
-                        const postBtn = await page.locator('div[role="button"]:has-text("Post")');
-                        if (postBtn) {
-                            await postBtn.click();
+                        await commentBox.click();
+                        await page.keyboard.type(generatedComment, { delay: Math.floor(Math.random() * 80) + 45 });
+                        await Humanizer.randomPause(0.5, 1.5);
+
+                        if (await postButton.count() > 0 && await postButton.isVisible() && await postButton.isEnabled()) {
+                            await postButton.click();
                             Storage.addComment(postIdContext);
                             Logger.success(`Commented on @${username}'s post!`);
+                        } else {
+                            Logger.warn('Comment drafted but the Post action is unavailable; skipped submission.');
                         }
                     }
                 } catch(e) {
-                     Logger.warn('Could not post comment. Box closed or disabled.');
+                     Logger.warn('Could not post comment. Composer changed or Instagram rejected the action.');
                 }
             }
 

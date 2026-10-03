@@ -1,13 +1,13 @@
 @echo off
+setlocal
+cd /d "%~dp0"
 echo ===========================================
 echo INSTAGRAM AI AUTOPILOT - LOGIN HELPER
 echo ===========================================
-echo A new Google Chrome window will open.
-echo 1. Wait for it to load instagram.com
-echo 2. Log in using your Instagram username and password.
-echo 3. If they ask for an SMS code or Email code, enter it.
-echo 4. Wait until you see your Feed.
-echo 5. Close the browser window to save your session.
+echo A dedicated browser window will open.
+echo 1. Log in to Instagram normally.
+echo 2. Complete any verification in the browser.
+echo 3. When your feed is visible, close the browser window.
 echo ===========================================
-npm run login
+call npm run login
 pause

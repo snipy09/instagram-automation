@@ -9,7 +9,8 @@ import { Logger } from '../utils/logger';
  */
 
 const providerEndpoints: Record<string, string> = {
-    openclaw: 'https://api.openclaw.com/v1/chat/completions',   // OpenClaw (OpenAI-compatible)
+    // OpenClaw's local Gateway exposes an OpenAI-compatible endpoint.
+    openclaw: `${process.env.OPENCLAW_BASE_URL || 'http://127.0.0.1:18789/v1'}/chat/completions`,
     openai: 'https://api.openai.com/v1/chat/completions',
     openrouter: 'https://openrouter.ai/api/v1/chat/completions',
     gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
@@ -119,7 +120,7 @@ Write a natural DM reply.`;
                     max_tokens: 60,
                     temperature: 0.85
                 },
-                { headers, timeout: 15000 }
+                { headers, timeout: 45_000 }
             );
 
             const text = resp.data?.choices?.[0]?.message?.content?.trim();

@@ -34,11 +34,13 @@ export const config = {
     dashboard: {
         port: parseInt(process.env.DASHBOARD_PORT || '3456', 10)
     },
+    // Both src/config.ts (ts-node) and dist/config.js resolve one level
+    // above their own directory to the project root.
     paths: {
-        userDataDir: path.join(__dirname, '../../data/browser_profile'),
-        dataDir: path.join(__dirname, '../../data'),
-        statsFile: path.join(__dirname, '../../data/stats.json'),
-        logsFile: path.join(__dirname, '../../data/app.log')
+        userDataDir: path.resolve(__dirname, '../data/browser_profile'),
+        dataDir: path.resolve(__dirname, '../data'),
+        statsFile: path.resolve(__dirname, '../data/stats.json'),
+        logsFile: path.resolve(__dirname, '../data/app.log')
     }
 };
 
