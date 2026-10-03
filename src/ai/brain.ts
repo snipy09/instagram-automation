@@ -136,16 +136,21 @@ Write a natural DM reply.`;
 
     private getFallbackComment(): string {
         const templates = [
-            "Love this 🔥",
-            "This is so good",
-            "Needed this today",
-            "So well done",
-            "This hits different",
-            "Really cool work",
-            "Vibes ✨",
-            "Insane quality",
-            "Saved this one",
-            "Respect 💯"
+            "the bug had other plans",
+            "this is what shipping through chaos looks like",
+            "production feared this energy",
+            "somewhere a server is smiling",
+            "debugging but make it cinematic",
+            "the tiny details did the heavy lifting here",
+            "you can feel the iterations",
+            "cleaner than my commit history",
+            "this sprint actually had character development",
+            "ship it before the chai gets cold",
+            "the plot twist was in production",
+            "looks suspiciously well tested",
+            "this actually works on my machine too",
+            "giving hard earned dopamine",
+            "woke up and chose clean architecture"
         ];
         return templates[Math.floor(Math.random() * templates.length)];
     }
