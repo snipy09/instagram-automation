@@ -56,35 +56,18 @@ class AutoPilotDaemon {
         // ── Show logged-in account username ───────────────────────────────
         let accountName = 'unknown';
         try {
-            // Instagram exposes the viewer's username in its shared data object
-            accountName = await page.evaluate(() => {
-                // Method 1: __ig_viewer from embedded JSON
+            const resp = await page.evaluate(async () => {
                 try {
-                    const sd = (window as any)._sharedData;
-                    if (sd?.config?.viewer?.username) return sd.config.viewer.username;
-                } catch (_) {}
-                // Method 2: meta tag
-                try {
-                    const el = document.querySelector('meta[property="al:ios:url"]');
-                    if (el) {
-                        const m = el.getAttribute('content')?.match(/user\?username=([^&]+)/);
-                        if (m) return m[1];
+                    // @ts-ignore
+                    const r = await fetch('/api/v1/accounts/edit/web_form_data/', { credentials: 'include' });
+                    if (r.ok) {
+                        const j: any = await r.json();
+                        return j?.form_data?.username || '';
                     }
                 } catch (_) {}
                 return '';
-            }) || '';
-
-            if (!accountName) {
-                // Method 3: visit the profile settings API
-                const resp = await page.evaluate(async () => {
-                    try {
-                        const r = await fetch('/api/v1/accounts/edit/web_form_data/', { credentials: 'include' });
-                        if (r.ok) { const j = await r.json(); return j?.form_data?.username || ''; }
-                    } catch (_) {}
-                    return '';
-                });
-                accountName = resp || 'unknown';
-            }
+            });
+            accountName = resp || 'unknown';
         } catch (_) {}
 
         Logger.success(`Logged in as @${accountName} — starting automation loop...`);
