@@ -56,24 +56,34 @@ class AutoPilotDaemon {
         // ── Show logged-in account username ───────────────────────────────
         let accountName = 'unknown';
         try {
-            // Navigate to the profile page to grab the username reliably
-            const profileLink = await page.$('a[href*="/accounts/edit/"], a[href*="/accounts/"]');
-            if (profileLink) {
-                const href: string = await profileLink.getAttribute('href') || '';
-                const match = href.match(/\/([^/]+)\//);
-                if (match) accountName = match[1];
-            }
-            if (accountName === 'unknown') {
-                // Fallback: read it from the page title or meta, or from /accounts/edit
-                await page.goto('https://www.instagram.com/accounts/edit/', { waitUntil: 'domcontentloaded', timeout: 10_000 });
-                await Humanizer.randomPause(1, 2);
-                const usernameInput = await page.$('input[name="username"]');
-                if (usernameInput) {
-                    accountName = await usernameInput.inputValue() || 'unknown';
-                }
-                // Go back to feed
-                await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded' });
-                await Humanizer.randomPause(1, 2);
+            // Instagram exposes the viewer's username in its shared data object
+            accountName = await page.evaluate(() => {
+                // Method 1: __ig_viewer from embedded JSON
+                try {
+                    const sd = (window as any)._sharedData;
+                    if (sd?.config?.viewer?.username) return sd.config.viewer.username;
+                } catch (_) {}
+                // Method 2: meta tag
+                try {
+                    const el = document.querySelector('meta[property="al:ios:url"]');
+                    if (el) {
+                        const m = el.getAttribute('content')?.match(/user\?username=([^&]+)/);
+                        if (m) return m[1];
+                    }
+                } catch (_) {}
+                return '';
+            }) || '';
+
+            if (!accountName) {
+                // Method 3: visit the profile settings API
+                const resp = await page.evaluate(async () => {
+                    try {
+                        const r = await fetch('/api/v1/accounts/edit/web_form_data/', { credentials: 'include' });
+                        if (r.ok) { const j = await r.json(); return j?.form_data?.username || ''; }
+                    } catch (_) {}
+                    return '';
+                });
+                accountName = resp || 'unknown';
             }
         } catch (_) {}
 
