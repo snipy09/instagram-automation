@@ -52,7 +52,32 @@ class AutoPilotDaemon {
         if (!feedConfirm) {
             Logger.warn('Could not confirm Feed is visible — proceeding cautiously.');
         }
-        Logger.success('Session verified. Starting automation loop...');
+
+        // ── Show logged-in account username ───────────────────────────────
+        let accountName = 'unknown';
+        try {
+            // Navigate to the profile page to grab the username reliably
+            const profileLink = await page.$('a[href*="/accounts/edit/"], a[href*="/accounts/"]');
+            if (profileLink) {
+                const href: string = await profileLink.getAttribute('href') || '';
+                const match = href.match(/\/([^/]+)\//);
+                if (match) accountName = match[1];
+            }
+            if (accountName === 'unknown') {
+                // Fallback: read it from the page title or meta, or from /accounts/edit
+                await page.goto('https://www.instagram.com/accounts/edit/', { waitUntil: 'domcontentloaded', timeout: 10_000 });
+                await Humanizer.randomPause(1, 2);
+                const usernameInput = await page.$('input[name="username"]');
+                if (usernameInput) {
+                    accountName = await usernameInput.inputValue() || 'unknown';
+                }
+                // Go back to feed
+                await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded' });
+                await Humanizer.randomPause(1, 2);
+            }
+        } catch (_) {}
+
+        Logger.success(`Logged in as @${accountName} — starting automation loop...`);
 
         // ── Main loop ─────────────────────────────────────────────────────────
         while (this.isRunning) {
