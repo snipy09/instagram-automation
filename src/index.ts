@@ -4,73 +4,85 @@ import { Logger } from './utils/logger';
 import { config, getActiveLimits } from './config';
 import { Storage } from './utils/storage';
 import { Humanizer } from './engine/humanizer';
-import path from 'path';
 
 class AutoPilotDaemon {
     private engine: BrowserEngine;
     private brain: AIBrain;
     private isRunning: boolean = true;
+    /** Post hrefs we have already touched this session to avoid repeats. */
+    private seenPosts: Set<string> = new Set();
 
     constructor() {
         this.engine = new BrowserEngine();
         this.brain = new AIBrain();
     }
 
-    private sleepUntilMorning() {
+    private sleepUntilMorning(): boolean {
         const now = new Date();
         const start = config.safety.sleepStart;
-        const end = config.safety.sleepEnd;
-        
-        let shouldSleep = false;
-        if (start > end) { // e.g. 23(11PM) to 8(8AM)
-            if (now.getHours() >= start || now.getHours() < end) shouldSleep = true;
-        } else {
-            if (now.getHours() >= start && now.getHours() < end) shouldSleep = true;
+        const end   = config.safety.sleepEnd;
+        if (start > end) {
+            return now.getHours() >= start || now.getHours() < end;
         }
-        return shouldSleep;
+        return now.getHours() >= start && now.getHours() < end;
     }
 
     async start() {
         Logger.info('Initializing Instagram AutoPilot AI Daemon...');
         Logger.info(`Configured AI: ${config.ai.provider} | Model: ${config.ai.model}`);
         Logger.info(`Target Hashtags: [${config.targeting.hashtags.join(', ')}]`);
-        
-        const page = await this.engine.launch(true); // Headless for background
 
-        // Ensure user is actually logged in before starting loops
-        await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded' });
-        await Humanizer.randomPause(2, 5);
+        const page = await this.engine.launch(true); // headless background
+
+        // ── Real login check ──────────────────────────────────────────────────
+        // We check the saved profile is actually authenticated. If the username
+        // login field appears, it means the session cookies have expired or were
+        // never saved — force stop and ask the user to re-run 2-Login.bat.
+        await page.goto('https://www.instagram.com/', { waitUntil: 'networkidle' });
+        await Humanizer.randomPause(2, 4);
 
         const loginInput = await page.$('input[name="username"]');
         if (loginInput) {
-            Logger.error('Account is NOT logged in. You must run the 2-Login.bat script FIRST before running the background daemon.');
+            Logger.error('Session expired or not logged in. Close this window, run 2-Login.bat, log in manually, then restart the bot.');
             process.exit(1);
         }
 
-        Logger.success('Session verified! Automatically surfing and engaging...');
-        
-        // --- MAIN BACKGROUND EVENT LOOP ---
+        // Confirm we're on the real feed, not a soft redirect
+        const feedConfirm = await page.$('svg[aria-label="Home"], nav, main[role="main"]');
+        if (!feedConfirm) {
+            Logger.warn('Could not confirm Feed is visible — proceeding cautiously.');
+        }
+        Logger.success('Session verified. Starting automation loop...');
+
+        // ── Main loop ─────────────────────────────────────────────────────────
         while (this.isRunning) {
             try {
-                // 1. Check Sleep Cycle
                 if (this.sleepUntilMorning()) {
-                    Logger.info('Sleep rhythm active. Waiting for morning hours...');
-                    await Humanizer.randomPause(1800, 3600); // Wait 30-60 mins before checking again
+                    Logger.info('Sleep cycle active. Resuming at morning hours...');
+                    await Humanizer.randomPause(1800, 3600);
                     continue;
                 }
 
-                const stats = Storage.getStats();
+                const stats  = Storage.getStats();
                 const limits = getActiveLimits();
 
-                // 2. Explore Hashtags (if enabled and limit not reached)
-                if (config.modules.hashtagLike && stats.likesToday < limits.dailyLikes) {
+                const allQuotasDone =
+                    (!config.modules.hashtagLike    || stats.likesToday    >= limits.dailyLikes) &&
+                    (!config.modules.hashtagComment || stats.commentsToday >= limits.dailyComments);
+
+                if (allQuotasDone) {
+                    Logger.info('Daily quotas reached. Waiting for reset...');
+                    await Humanizer.randomPause(1800, 3600);
+                    continue;
+                }
+
+                if (config.modules.hashtagLike || config.modules.hashtagComment) {
                     await this.exploreRandomHashtag(page);
                 }
 
-                // 3. Take a long safety cooldown between cycles
                 await Humanizer.cooldownPause();
             } catch (err: any) {
-                Logger.error(`Loop error: ${err.message}. Restarting loop in 60s...`);
+                Logger.error(`Loop error: ${err.message}. Retrying in 60s...`);
                 await Humanizer.randomPause(60, 120);
             }
         }
@@ -83,103 +95,143 @@ class AutoPilotDaemon {
 
         await page.goto(`https://www.instagram.com/explore/tags/${tag}/`, { waitUntil: 'domcontentloaded' });
 
-        // Instagram's current grid does not consistently use an <article> wrapper.
-        // Wait for a post link, then use broad post/reel URL selectors rather than
-        // treating a slow client-side render as an empty hashtag page.
         const postSelector = 'a[href^="/p/"], a[href^="/reel/"]';
-        await page.waitForSelector(postSelector, { state: 'attached', timeout: 15_000 }).catch(() => null);
+        await page.waitForSelector(postSelector, { state: 'attached', timeout: 18_000 }).catch(() => null);
         await Humanizer.randomPause(2, 4);
 
-        const posts = await page.$$(postSelector);
-        if (posts.length > 0) {
-            // Click to open modal
-            await posts[Math.floor(Math.random() * Math.min(3, posts.length))].click();
-            await Humanizer.randomPause(3, 6);
-
-            // Fetch post data
-            let username = "someone";
-            try {
-                username = await page.locator('header span a').first().innerText();
-            } catch (e) {}
-
-            let caption = "";
-            try {
-                caption = await page.locator('h1').innerText();
-            } catch (e) {}
-
-            Logger.action('AI Reading', `Post by @${username}: "${caption.slice(0, 40)}..."`);
-            
-            // --- STRICT RELEVANCE AI CHECK ---
-            if (config.filtering.strictRelevance) {
-                Logger.info('Analyzing post relevance based on ACCOUNT_CONTEXT...');
-                const isRelevant = await this.brain.isPostRelevant(caption, username);
-                if (!isRelevant) {
-                    Logger.warn(`Skipping post by @${username}: Not relevant to our business niche.`);
-                    await page.keyboard.press('Escape');
-                    return;
-                }
-                Logger.success('Post is relevant! Generating engagement...');
-            }
-            
-            // Generate smart AI Comment
-            const generatedComment = await this.brain.generateComment(caption, username);
-            
-            // Action decision based on quotas
-            const stats = Storage.getStats();
-            const limits = getActiveLimits();
-            const postIdContext = `${tag}-${new Date().getTime()}`; // simplistic hashing for unique post
-
-            if (config.modules.hashtagLike && stats.likesToday < limits.dailyLikes) {
-                try {
-                    // Try to click like button (if not already liked)
-                    const likeSvg = await page.locator('svg[aria-label="Like"]').first();
-                    if (likeSvg) {
-                        await likeSvg.click();
-                        Storage.addLike();
-                        Logger.success(`Liked post by @${username}`);
-                        await Humanizer.randomPause(1, 3);
-                    }
-                } catch(e) {}
-            }
-
-            if (config.modules.hashtagComment && stats.commentsToday < limits.dailyComments) {
-                try {
-                    // Instagram commonly renders the composer inside the post dialog.
-                    // Check that a visible, enabled composer and its matching Post action
-                    // actually exist before typing.
-                    const commentBox = page.locator('[role="dialog"] textarea[aria-label*="comment" i], textarea[aria-label*="comment" i]').first();
-                    const postButton = page.locator('[role="dialog"] button:has-text("Post"), [role="dialog"] div[role="button"]:has-text("Post"), button:has-text("Post")').first();
-
-                    if (await commentBox.count() === 0 || !await commentBox.isVisible() || !await commentBox.isEnabled()) {
-                        Logger.warn('Comment composer is unavailable; skipped comment without retrying.');
-                    } else {
-                        Logger.info(`AI drafted comment: "${generatedComment}"`);
-                        await commentBox.click();
-                        await page.keyboard.type(generatedComment, { delay: Math.floor(Math.random() * 80) + 45 });
-                        await Humanizer.randomPause(0.5, 1.5);
-
-                        if (await postButton.count() > 0 && await postButton.isVisible() && await postButton.isEnabled()) {
-                            await postButton.click();
-                            Storage.addComment(postIdContext);
-                            Logger.success(`Commented on @${username}'s post!`);
-                        } else {
-                            Logger.warn('Comment drafted but the Post action is unavailable; skipped submission.');
-                        }
-                    }
-                } catch(e) {
-                     Logger.warn('Could not post comment. Composer changed or Instagram rejected the action.');
-                }
-            }
-
-            // Close post modal (press escape)
-            await page.keyboard.press('Escape');
-        } else {
-             Logger.warn(`No posts found for hashtag #${tag}`);
+        // ── Pick a post we haven't touched yet in this session ────────────────
+        const allLinks = await page.$$(postSelector);
+        if (allLinks.length === 0) {
+            Logger.warn(`No posts found for hashtag #${tag}`);
+            return;
         }
+
+        // Resolve hrefs, skip already-seen ones
+        const fresh: { el: any; href: string }[] = [];
+        for (const el of allLinks) {
+            const href: string = await el.getAttribute('href').catch(() => '');
+            if (href && !this.seenPosts.has(href)) {
+                fresh.push({ el, href });
+                if (fresh.length >= 9) break; // cap the pool at 9 candidates
+            }
+        }
+
+        if (fresh.length === 0) {
+            Logger.warn(`All visible posts on #${tag} already visited — skipping.`);
+            return;
+        }
+
+        const chosen = fresh[Math.floor(Math.random() * fresh.length)];
+        this.seenPosts.add(chosen.href);
+
+        // ── Open the post ─────────────────────────────────────────────────────
+        await chosen.el.click();
+        await Humanizer.randomPause(3, 6);
+
+        // ── Scrape metadata ───────────────────────────────────────────────────
+        let username = 'someone';
+        let caption  = '';
+
+        try {
+            // Current Instagram modal: username lives in the dialog header
+            username = await page.locator('[role="dialog"] a[role="link"] span, header a span').first().innerText({ timeout: 4000 });
+        } catch (_) {}
+
+        try {
+            // Caption lives in an <h1> inside the dialog
+            caption = await page.locator('[role="dialog"] h1, article h1').first().innerText({ timeout: 4000 });
+        } catch (_) {}
+
+        if (!username || username === 'someone') {
+            // Fallback: parse username from the href we stored  (/p/<id>/ won't have it,
+            // but /reel/<id>/liked_by/<user>/ sometimes does — use the header link instead)
+            try {
+                username = await page.locator('a[href*="instagram.com/"] span').first().innerText({ timeout: 2000 });
+            } catch (_) {}
+        }
+
+        Logger.action('AI Reading', `Post by @${username}: "${caption.slice(0, 60)}..."`);
+
+        // ── Relevance filter ──────────────────────────────────────────────────
+        if (config.filtering.strictRelevance) {
+            Logger.info('Checking post relevance...');
+            const relevant = await this.brain.isPostRelevant(caption, username);
+            if (!relevant) {
+                Logger.warn(`Skipping @${username}: not relevant to account context.`);
+                await page.keyboard.press('Escape');
+                return;
+            }
+        }
+
+        // Generate comment before acting so we don't waste the API call if like fails
+        const generatedComment = await this.brain.generateComment(caption, username);
+
+        const stats  = Storage.getStats();
+        const limits = getActiveLimits();
+
+        // ── Like ──────────────────────────────────────────────────────────────
+        if (config.modules.hashtagLike && stats.likesToday < limits.dailyLikes) {
+            try {
+                // Instagram uses accessible SVG via aria-label on the button, not the SVG itself
+                const likeBtn = page.locator(
+                    'button[aria-label="Like"], ' +
+                    '[role="dialog"] button:has(svg[aria-label="Like"]), ' +
+                    'article button:has(svg[aria-label="Like"])'
+                ).first();
+                if ((await likeBtn.count()) > 0 && (await likeBtn.isVisible())) {
+                    await likeBtn.click();
+                    Storage.addLike();
+                    Logger.success(`Liked post by @${username}`);
+                    await Humanizer.randomPause(1, 2);
+                } else {
+                    Logger.warn(`Like button not found for @${username}`);
+                }
+            } catch (_) {}
+        }
+
+        // ── Comment ───────────────────────────────────────────────────────────
+        if (config.modules.hashtagComment && stats.commentsToday < limits.dailyComments) {
+            try {
+                const commentBox = page.locator(
+                    'textarea[placeholder*="comment" i], textarea[aria-label*="comment" i]'
+                ).first();
+
+                if ((await commentBox.count()) === 0 || !(await commentBox.isVisible())) {
+                    Logger.warn('Comment box not visible; skipped.');
+                } else {
+                    Logger.info(`Typing comment: "${generatedComment}"`);
+                    await commentBox.click();
+                    await Humanizer.randomPause(0.2, 0.5);
+                    await page.keyboard.type(generatedComment, { delay: Math.floor(Math.random() * 80) + 35 });
+                    await Humanizer.randomPause(0.6, 1.4);
+
+                    // The Post/Submit button activates only after text is entered
+                    const postBtn = page.locator(
+                        'button[type="submit"]:not([disabled]), ' +
+                        'div[role="button"]:has-text("Post"), ' +
+                        'button:has-text("Post")'
+                    ).last();
+
+                    if ((await postBtn.count()) > 0 && (await postBtn.isVisible())) {
+                        await postBtn.click();
+                        Storage.addComment(chosen.href);
+                        Logger.success(`Commented on @${username}'s post!`);
+                    } else {
+                        // Clear the box - don't leave half-typed text
+                        await page.keyboard.press('Control+a');
+                        await page.keyboard.press('Delete');
+                        Logger.warn('Post button not found after typing; comment cleared.');
+                    }
+                }
+            } catch (e: any) {
+                Logger.warn(`Comment error: ${e.message}`);
+            }
+        }
+
+        await page.keyboard.press('Escape');
     }
 }
 
-// Global entry point
 const app = new AutoPilotDaemon();
 app.start().catch((e) => {
     Logger.error('Fatal crash: ' + e);
