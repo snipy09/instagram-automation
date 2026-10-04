@@ -1,9 +1,7 @@
 node_modules/
 dist/
 .env
-data/browser_profile/
-data/cookies.json
-data/logs/
+data/
 *.log
 .DS_Store
 Thumbs.db
