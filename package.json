@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "type": "commonjs",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"const fs=require('fs'); fs.mkdirSync('dist/dashboard/public', {recursive:true}); fs.cpSync('src/dashboard/public', 'dist/dashboard/public', {recursive:true});\"",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "login": "ts-node src/login-helper.ts",

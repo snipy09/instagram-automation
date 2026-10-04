@@ -1,296 +1,278 @@
-# 🤖 Instagram AI AutoPilot
+# Instagram AutoPilot
 
-A smart, stealth, background Instagram automation engine that auto-likes, auto-comments, and auto-replies to DMs using AI-generated responses — with built-in anti-ban safety limits so your account stays safe.
+[![Language](https://img.shields.io/badge/Language-TypeScript-blue.svg)](https://www.typescriptlang.org/)
+[![Engine](https://img.shields.io/badge/Engine-Playwright-green.svg)](https://playwright.dev/)
+[![Server](https://img.shields.io/badge/Server-Express-black.svg)](https://expressjs.com/)
+[![License](https://img.shields.io/badge/License-MIT-gray.svg)](LICENSE)
+
+Headless, stealth Instagram automation daemon with AI-driven engagement, strict niche filtering, anti-ban safety limits, and a real-time local monitoring dashboard.
 
 ---
 
-## What Does It Do?
+## Overview
 
-| Feature | How |
+Instagram AutoPilot automates interaction workflows on Instagram using a persistent, stealth Chromium browser session. It explores target hashtags, evaluates post relevance against custom business context using LLMs, drafts contextual non-generic comments and direct message responses, and enforces strict rate quotas and sleep intervals to emulate natural human browsing patterns.
+
+---
+
+## Features
+
+| Category | Capability |
 | --- | --- |
-| **Auto-Like Posts** | Randomly scrolls hashtag feeds and likes posts with human-like delays |
-| **Auto-Comment** | Uses AI (OpenClaw / OpenAI / Gemini / any provider) to generate genuine, context-aware comments based on the post's caption — never generic "nice pic!" spam |
-| **Auto-Reply to DMs** | Reads incoming DMs and drafts natural replies using AI |
-| **Anti-Ban Engine** | Randomized delays, daily/hourly quotas, sleep-cycle simulation, browser stealth (no `webdriver` flag, spoofed fingerprint) |
-| **Runs in Background** | Headless Chromium — your screen is free, bot runs silently |
-| **Live Dashboard** | See likes, comments, DMs, and AI logs in a local web UI |
+| Browser Engine | Persistent session storage, headless execution, anti-detection flags (`navigator.webdriver` removal, spoofed Chrome fingerprints). |
+| AI Engagement | Multi-provider LLM integration (OpenClaw, OpenAI, Google Gemini, OpenRouter, Ollama) generating short, contextual comments and direct message replies. |
+| Strict Relevance Filter | Contextual analysis that checks post captions and profiles against business domain descriptions before initiating engagement. |
+| Anti-Ban Safeguards | Configurable safety profiles (`safe`, `balanced`, `active`), hourly and daily action caps, randomized action jitter, and sleep-cycle scheduling. |
+| Interaction Tracking | Deduplication engine tracking post IDs to prevent repeated interactions on previously engaged media. |
+| Live Dashboard | Web-based telemetry interface (Express + Tailwind CSS) providing live quota progress, system configuration, and streaming logs. |
+| Cross-Platform Control | Dedicated Windows batch runners (`.bat`) and standardized `npm` CLI commands for Linux and macOS environments. |
 
 ---
 
-## 📁 Project Structure
+## Architecture
+
+```
+[Target Hashtag Feed] / [Direct Messages]
+          │
+          ▼
+┌────────────────────────────────────────────────────────┐
+│               Stealth Browser Engine                   │
+│        (Playwright Extra + Stealth Plugin)             │
+└─────────────────────────┬──────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────┐
+│            Strict Relevance Filter (AI)                │
+│    Compares post context against account persona       │
+└─────────────────────────┬──────────────────────────────┘
+             │ YES                                │ NO
+             ▼                                    ▼
+┌─────────────────────────┐               ┌──────────────┐
+│ Contextual Generation   │               │ Skip & Next  │
+│ (OpenClaw/OpenAI/Gemini)│               └──────────────┘
+└────────────┬────────────┘
+             │
+             ▼
+┌────────────────────────────────────────────────────────┐
+│               Anti-Ban Safety Controller               │
+│   - Action Quota Verification (Likes / Comments / DMs) │
+│   - Humanized Keystrokes & Random Delays               │
+│   - Sleep Schedule Enforcement                         │
+└─────────────────────────┬──────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────┐
+│          Telemetry & Storage (data/stats.json)         │
+│          Live Web Dashboard (http://localhost:3456)    │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Project Structure
 
 ```
 instagram-automation/
-├── 1-Install.bat           ← Step 1: double-click to install
-├── 2-Login.bat             ← Step 2: log into Instagram once
-├── 3-Start-Bot.bat         ← Step 3: run the bot in background
-├── 4-Dashboard.bat         ← Step 4: open the live dashboard
-├── .env.example            ← Config template (copy to .env)
-├── package.json
-├── tsconfig.json
+├── 1-Install.bat              # Windows dependency and browser setup
+├── 2-Login.bat                # Interactive browser window for initial authentication
+├── 3-Start-Bot.bat            # Launches daemon in background mode
+├── 4-Stop-Bot.bat             # Process termination script for Node instances
+├── 5-Dashboard.bat            # Serves telemetry web dashboard
+├── .env.example               # Configuration template
+├── package.json               # Package manifests and script definitions
+├── tsconfig.json              # TypeScript compilation specifications
+├── LICENSE                    # MIT License
 ├── src/
-│   ├── index.ts            ← Main bot daemon (the brain)
-│   ├── login-helper.ts     ← One-time login flow
-│   ├── config.ts           ← All settings + safety profiles
+│   ├── index.ts               # Main daemon entrypoint and engagement loop
+│   ├── login-helper.ts        # One-time interactive session initializer
+│   ├── config.ts              # Configuration loader and profile limits
 │   ├── ai/
-│   │   └── brain.ts        ← AI comment/DM generator (multi-provider)
+│   │   └── brain.ts           # LLM connector and prompt pipelines
 │   ├── engine/
-│   │   ├── browser.ts      ← Stealth Chromium launcher
-│   │   └── humanizer.ts    ← Random delays, human typing, scrolling
+│   │   ├── browser.ts         # Playwright Chromium launcher with stealth layers
+│   │   └── humanizer.ts       # Jitter delays, humanized typing, and scroll simulation
 │   ├── dashboard/
-│   │   ├── standalone.ts   ← Express server for dashboard
+│   │   ├── standalone.ts      # Express backend for metrics and log streaming
 │   │   └── public/
-│   │       └── index.html  ← Dashboard frontend
+│   │       └── index.html     # Telemetry web UI
 │   └── utils/
-│       ├── logger.ts       ← Console + file logging
-│       └── storage.ts      ← Stats persistence + daily reset
-└── data/                   ← Created at runtime (browser profile, logs, stats)
+│       ├── logger.ts          # Formatted stdout and file persistence logger
+│       └── storage.ts         # Quota tracking, post history, and daily rollover
+└── data/                      # Generated runtime assets (gitignored)
+    ├── browser_profile/       # Persistent Chromium cache and cookie store
+    ├── app.log                # Rolling execution log file
+    └── stats.json             # Daily action counters and history
 ```
 
 ---
 
-## ⚡ Quick Start (4 Steps)
+## Quick Start
 
 ### Prerequisites
 
-- **Windows 10 or 11** (Mac/Linux users: use `npm run` commands instead of `.bat` files)
-- **Node.js 18+** — Download from [nodejs.org](https://nodejs.org)
-- **An AI API Key** (any ONE of these):
-  - [OpenClaw](https://openclaw.com) — recommended
-  - [OpenAI](https://platform.openai.com/api-keys)
-  - [Google Gemini](https://aistudio.google.com/apikey)
-  - [OpenRouter](https://openrouter.ai/keys)
-  - Or set `AI_PROVIDER=none` to use built-in template comments (no AI needed)
+- Node.js 18.0.0 or higher
+- npm (bundled with Node.js)
+- Supported OS: Windows 10/11, macOS, or Linux
 
----
+### 1. Installation
 
-### Step 1 — Install
+Clone the repository and install all dependencies including the Chromium browser binary:
 
-```
-Double-click:  1-Install.bat
-```
-
-Or manually:
 ```bash
+git clone https://github.com/snipy09/instagram-automation.git
+cd instagram-automation
 npm install
 npx playwright install chromium
 ```
 
-This installs all packages and downloads a clean Chromium browser (separate from your main Chrome — your personal browser is never touched).
+*Windows one-click alternative: Double-click `1-Install.bat`.*
 
----
+### 2. Configuration
 
-### Step 2 — Configure
-
-1. Copy `.env.example` to `.env`:
-   ```bash
-   copy .env.example .env
-   ```
-
-2. Open `.env` in any text editor (Notepad, VS Code, etc.) and fill in:
-
-   ```dotenv
-   # Your AI provider (openclaw, openai, gemini, openrouter, ollama, or none)
-   AI_PROVIDER=openclaw
-
-   # Your API key from whoichever provider you chose
-   AI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxx
-
-   # What model to use
-   AI_MODEL_NAME=gpt-4o-mini
-
-   # Hashtags to engage with (comma separated, no # symbol)
-   TARGET_HASHTAGS=tech,coding,software,developer,startups
-   
-   # Safety profile: "safe" (very slow), "balanced" (recommended), "active" (faster)
-   SAFETY_PROFILE=balanced
-   ```
-
-   **That's it.** Everything else has good defaults.
-
----
-
-### Step 3 — Login (One Time Only)
-
-```
-Double-click:  2-Login.bat
-```
-
-A visible Chrome window opens → go to instagram.com → log in normally (username, password, 2FA if asked) → once you see your feed, close the window. **Your session is saved locally** in `data/browser_profile/` and reused silently by the bot.
-
-> **You only need to do this once.** The bot reuses the saved session. If Instagram logs you out (rare), just run this step again.
-
----
-
-### Step 4 — Start the Bot
-
-```
-Double-click:  3-Start-Bot.bat
-```
-
-The bot now runs **headlessly in the background**. You'll see colored log output:
-
-```
-[10:23:15] INFO: Initializing Instagram AutoPilot AI Daemon...
-[10:23:15] INFO: Configured AI: openclaw | Model: gpt-4o-mini
-[10:23:18] SUCCESS: Session verified! Automatically surfing and engaging...
-[10:23:42] [Explore]: Surfing hashtag #coding
-[10:23:49] [AI Reading]: Post by @devguy: "Finally deployed my first..."
-[10:23:50] SUCCESS: Liked post by @devguy
-[10:23:52] INFO: AI drafted comment: "congrats on shipping! deploy day hits different 🚀"
-[10:23:55] SUCCESS: Commented on @devguy's post!
-[10:24:38] [Explore]: Surfing hashtag #startups
-```
-
-Press `CTRL+C` to stop the bot anytime.
-
----
-
-### Step 5 (Optional) — Live Dashboard
-
-```
-Double-click:  4-Dashboard.bat
-```
-
-Opens `http://localhost:3456` in your browser with a dark live dashboard showing:
-- Likes / Comments / DMs count vs daily limits
-- Active AI model and safety profile
-- Target hashtags
-- Real-time scrolling terminal logs
-
----
-
-## 🛡️ Anti-Ban Safety System
-
-Instagram bans bots that act like bots. This tool doesn't:
-
-| Protection | How |
-| --- | --- |
-| **Daily Quotas** | Hard caps on likes/comments/DMs per day (configurable) |
-| **Hourly Throttle** | Spread actions across the day, never burst |
-| **Random Human Delays** | Every action waits 30–120 seconds (randomized gaussian), not fixed intervals |
-| **Human Typing** | Comments are typed character-by-character with random speed, not pasted instantly |
-| **Sleep Cycle** | Bot goes dormant 11PM–8AM (configurable) like a real person |
-| **Stealth Browser** | No `navigator.webdriver` flag, spoofed Chrome fingerprint, no automation traces |
-| **Persistent Session** | Uses saved cookies, never re-logs in repeatedly (which triggers suspicion) |
-| **AI Comments** | Each comment is unique and contextual — not from a repeated template list |
-| **Duplicate Guard** | Tracks interacted posts, never comments on the same post twice |
-
-### Safety Profiles
-
-| Profile | Daily Likes | Daily Comments | Daily DMs | Delay Between Actions |
-| --- | --- | --- | --- | --- |
-| `safe` | 30 | 10 | 15 | 45–120 sec |
-| `balanced` | 70 | 25 | 30 | 30–90 sec |
-| `active` | 150 | 50 | 60 | 15–45 sec |
-
-> **Recommendation:** Start with `safe` for the first week. After that, move to `balanced`. Only use `active` on accounts older than 6 months with an established posting history.
-
----
-
-## 🧠 AI Configuration
-
-The bot supports **any OpenAI-compatible API**. Just set the provider in `.env`:
-
-| Provider | `AI_PROVIDER` | `AI_API_KEY` | `AI_MODEL_NAME` |
-| --- | --- | --- | --- |
-| OpenClaw | `openclaw` | Your OpenClaw key | Any model they serve |
-| OpenAI | `openai` | `sk-...` | `gpt-4o-mini`, `gpt-4o` |
-| Google Gemini | `gemini` | Your Gemini key | `gemini-2.0-flash` |
-| OpenRouter | `openrouter` | `sk-or-...` | Any model slug |
-| Local Ollama | `ollama` | (leave blank) | `llama3.1`, etc. |
-| No AI | `none` | (leave blank) | (ignored) |
-
-### Tone Customization
-
-Edit `AI_TONE_INSTRUCTION` in `.env` to change how the AI sounds:
-
-```dotenv
-# Casual tech bro:
-AI_TONE_INSTRUCTION="Sound like a chill software engineer who genuinely finds the post interesting. Max 8 words."
-
-# Supportive creator:
-AI_TONE_INSTRUCTION="Be warm and encouraging, like a fellow creator who's been there."
-
-# Minimal:
-AI_TONE_INSTRUCTION="Super short reactions. 3-5 words max. No emojis."
-```
-
----
-
-## 🧩 Module Toggles
-
-Enable or disable specific features in `.env`:
-
-```dotenv
-ENABLE_AUTO_LIKE_FEED=true        # Like posts from your main feed
-ENABLE_AUTO_COMMENT_FEED=true     # Comment on feed posts
-ENABLE_AUTO_LIKE_HASHTAGS=true    # Like posts from hashtag explore
-ENABLE_AUTO_COMMENT_HASHTAGS=true # Comment on hashtag posts
-ENABLE_DM_AUTO_REPLY=true         # Auto-reply to incoming DMs
-
-### Supercharge with Niche Relevance (For Agencies / B2B)
-Want the bot to only interact with potential leads or peers? Use the Relevance Engine!
-
-```dotenv
-# Define your business:
-ACCOUNT_CONTEXT="We are a web design agency looking for small business owners and startups."
-
-# Turn the filter on:
-STRICT_RELEVANCE_CHECK=true
-```
-When this is enabled, the AI reads every post against your `ACCOUNT_CONTEXT`. If it decides the post is irrelevant (e.g., someone's personal vacation photo rather than a business post), it entirely skips liking and commenting!
-```
-
----
-
-## ⚠️ Important Notes
-
-1. **This is for educational/personal use.** Automating Instagram actions violates their ToS. Use responsibly.
-2. **Start slow.** New accounts get flagged faster. Use `safe` profile and 3-5 hashtags max.
-3. **Don't run 24/7.** The sleep cycle helps, but taking 1-2 days off per week is smarter.
-4. **The bot uses its own browser profile.** Your personal Chrome, cookies, and passwords are never touched.
-5. **API keys stay local.** Your `.env` file is gitignored and never leaves your machine.
-
----
-
-## Manual Commands (for Mac/Linux or advanced users)
+Copy the example environment configuration file and adjust variables according to your requirements:
 
 ```bash
-# Install
-npm install && npx playwright install chromium
+cp .env.example .env
+```
 
-# Configure
-cp .env.example .env   # then edit .env
+Edit `.env`:
 
-# Login (opens visible browser)
+```dotenv
+AI_PROVIDER=openclaw
+AI_API_KEY=your_api_key_here
+AI_MODEL_NAME=gpt-4o-mini
+TARGET_HASHTAGS=tech,coding,software,developer,startups
+SAFETY_PROFILE=balanced
+```
+
+### 3. Session Initialization (One-Time Login)
+
+Launch the interactive login browser to authenticate your Instagram account:
+
+```bash
 npm run login
+```
 
-# Build TypeScript
+*Windows one-click alternative: Double-click `2-Login.bat`.*
+
+1. An interactive Chromium browser window will open to `https://www.instagram.com/`.
+2. Enter your credentials and complete any two-factor verification steps.
+3. Once the main home feed is visible, close the browser window.
+4. Your authenticated session will be saved to `data/browser_profile/` for subsequent automated runs.
+
+### 4. Build and Run the Automation Daemon
+
+Compile TypeScript assets and start the background automation daemon:
+
+```bash
 npm run build
-
-# Start bot (headless background)
 npm start
+```
 
-# Start dashboard
+*Windows one-click alternative: Double-click `3-Start-Bot.bat`.*
+
+To terminate running background processes:
+- Press `Ctrl + C` in the running terminal, or run `4-Stop-Bot.bat` on Windows.
+
+### 5. Launch Live Dashboard
+
+Start the telemetry server to monitor active metrics, quotas, and logs:
+
+```bash
 npm run dashboard
 ```
+
+*Windows one-click alternative: Double-click `5-Dashboard.bat`.*
+
+Open your web browser and navigate to:
+```
+http://localhost:3456
+```
+
+---
+
+## Configuration Reference
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `AI_PROVIDER` | string | `openclaw` | AI backend provider: `openclaw`, `openai`, `gemini`, `openrouter`, `ollama`, or `none`. |
+| `AI_API_KEY` | string | `""` | API authentication key for the selected AI provider (not required for `none` or local `ollama`). |
+| `AI_MODEL_NAME` | string | `gpt-4o-mini` | LLM model identifier (e.g. `gpt-4o-mini`, `gemini-2.0-flash`, `llama3.1`). |
+| `AI_TONE_INSTRUCTION` | string | `Act as a friendly...` | Persona instruction guiding the tone and constraints of generated comments and messages. |
+| `SAFETY_PROFILE` | string | `balanced` | Safety limit preset: `safe`, `balanced`, or `active`. |
+| `SLEEP_START_HOUR` | number | `23` | Hour in 24h format (0-23) when daemon enters sleep mode. |
+| `SLEEP_END_HOUR` | number | `8` | Hour in 24h format (0-23) when daemon resumes activity. |
+| `TARGET_HASHTAGS` | string | `tech,coding,software...` | Comma-separated list of hashtag strings without the `#` symbol. |
+| `ENABLE_AUTO_LIKE_FEED` | boolean | `true` | Enables liking posts within the main feed. |
+| `ENABLE_AUTO_COMMENT_FEED` | boolean | `true` | Enables commenting on posts within the main feed. |
+| `ENABLE_AUTO_LIKE_HASHTAGS` | boolean | `true` | Enables liking posts discovered through target hashtag exploration. |
+| `ENABLE_AUTO_COMMENT_HASHTAGS` | boolean | `true` | Enables generating and publishing comments on hashtag posts. |
+| `ENABLE_DM_AUTO_REPLY` | boolean | `true` | Enables automated responses to incoming direct messages. |
+| `ACCOUNT_CONTEXT` | string | `""` | Text description of the business, brand, or account domain for relevance scoring. |
+| `STRICT_RELEVANCE_CHECK` | boolean | `false` | When true, skips posts deemed unrelated to `ACCOUNT_CONTEXT` by the LLM. |
+| `DASHBOARD_PORT` | number | `3456` | Local HTTP port used by the dashboard server. |
+
+---
+
+## Safety Profiles & Anti-Ban Specifications
+
+The system applies safety controls to prevent account restrictions:
+
+| Profile | Daily Likes | Hourly Likes | Daily Comments | Hourly Comments | Daily DMs | Hourly DMs | Action Cooldown (Jitter) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `safe` | 30 | 8 | 10 | 3 | 15 | 4 | 45 – 120 sec |
+| `balanced` | 70 | 15 | 25 | 6 | 30 | 8 | 30 – 90 sec |
+| `active` | 150 | 25 | 50 | 12 | 60 | 15 | 15 – 45 sec |
+
+### Safety Engine Behaviors
+
+- Randomized Delays: Every interaction step executes with non-deterministic gaussian delays.
+- Humanized Input: Comment text is entered character-by-character with variable keystroke timings rather than instant DOM value assignment.
+- Sleep Interval Simulation: Automated pausing during configured nighttime hours to mirror natural usage.
+- Duplicate Filtering: Interacted post IDs are recorded in `data/stats.json` (bounded to the last 500 records) to prevent duplicate actions.
+
+---
+
+## Tech Stack
+
+| Library / Tool | Role |
+| --- | --- |
+| TypeScript | Type-safe application development |
+| Playwright | Headless browser automation framework |
+| Playwright Extra | Plugin framework extending Playwright |
+| Puppeteer Extra Stealth | Evasion techniques for automated browser fingerprint detection |
+| Express | HTTP API server for dashboard metrics and log streaming |
+| Axios | HTTP client for REST-based AI API providers |
+| Chalk & Ora | Terminal styling and logging utilities |
+| Tailwind CSS | Dashboard UI styling |
+
+---
+
+## Available Scripts
+
+| Command | Action |
+| --- | --- |
+| `npm run build` | Compiles TypeScript source files into `dist/` and copies dashboard static assets. |
+| `npm start` | Runs the compiled production daemon (`dist/index.js`). |
+| `npm run dev` | Runs the daemon directly from source via `ts-node`. |
+| `npm run login` | Opens an interactive Chromium browser for session authentication. |
+| `npm run dashboard` | Starts the Express telemetry server on the configured port. |
+| `npm run clean` | Removes the compiled `dist/` output directory. |
 
 ---
 
 ## Troubleshooting
 
-| Problem | Fix |
-| --- | --- |
-| `NOT logged in` error | Run `2-Login.bat` again and log in manually |
-| `AI request failed` | Check your `AI_API_KEY` in `.env` — make sure it's valid and has credits |
-| Bot stops after a while | Instagram may have rate-limited you. Wait 24h, then restart with `safe` profile |
-| `playwright install` fails | Run as Administrator, or manually: `npx playwright install chromium` |
-| Dashboard shows 0 stats | Make sure the bot (`3-Start-Bot.bat`) is running alongside the dashboard |
-| Port 3456 in use | Change `DASHBOARD_PORT=3457` in `.env` |
+| Symptom | Cause | Resolution |
+| --- | --- | --- |
+| `Account is NOT logged in` | No valid session data in `data/browser_profile/`. | Run `npm run login` (or `2-Login.bat`), sign in manually, and verify the feed before closing. |
+| `AI request failed` | Invalid or missing API key, or insufficient credits. | Verify `AI_API_KEY` and `AI_PROVIDER` values in `.env`. Set `AI_PROVIDER=none` to test with fallback templates. |
+| Playwright browser missing | Chromium binary was not downloaded during installation. | Run `npx playwright install chromium`. |
+| Dashboard shows 0 stats | Bot daemon has not executed any operations or `data/stats.json` is uninitialized. | Start the bot daemon (`npm start` or `3-Start-Bot.bat`) alongside the dashboard. |
+| Port in use error (`EADDRINUSE`) | Another process is listening on the default dashboard port. | Update `DASHBOARD_PORT` in `.env` to an alternate port (e.g. `3457`). |
 
 ---
 
 ## License
 
-MIT — do whatever you want with it.
+This project is licensed under the [MIT License](LICENSE).

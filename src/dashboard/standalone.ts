@@ -8,7 +8,11 @@ import { Storage } from '../utils/storage';
 
 const app = express();
 app.use(cors());
-app.use(express.static(path.join(__dirname, 'public')));
+const publicDir = fs.existsSync(path.join(__dirname, 'public'))
+    ? path.join(__dirname, 'public')
+    : path.join(__dirname, '../../src/dashboard/public');
+
+app.use(express.static(publicDir));
 app.use(express.json());
 
 // API: Get Live Settings & Stats
